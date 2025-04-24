@@ -9,14 +9,18 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ```{r librairies,message=FALSE, warning=FALSE}
+#install.packages("modelsummary")
+#install.packages("marginaleffects")
 library(tidyverse)
+library(patchwork)
+library(broom)
+library(modelsummary)
+library(marginaleffects)
+
+#library(stringr)
 ```
 
 ## Including Plots
@@ -27,4 +31,86 @@ library(tidyverse)
 results = read.csv("data/results_2016.csv")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r tache2}
+
+
+results <- results %>%
+  mutate(age_group = cut(median_age,
+                         breaks = c(0, 35, 50, 60, Inf),
+                         labels = c("Jeune", "Adultes", "Agés", "retraités")))
+
+p1 <- ggplot(results, aes(x = percent_dem)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "white") +
+  labs(title = "Distribution du vote démocrate (%)",
+       x = "% de votes démocrates", y = "Nombre de comtés")
+
+
+p2 <- ggplot(results, aes(x = age_group, y = percent_gop, fill = age_group)) +
+  geom_boxplot() +
+  labs(title = "Vote républicain selon l’âge médian",
+       x = "Groupe d’âge", y = "% de votes républicains") +
+  scale_fill_viridis_d()+
+  theme(legend.position = "none")
+
+
+p3 <- ggplot(results, aes(x = per_capita_income, y = percent_other)) +
+  geom_point(alpha = 0.6, color = "darkred") +
+  labs(title = "Revenu par habitant vs. vote pour autres partis",
+       x = "Revenu par habitant", y = "% autres partis")
+
+(p1 | p2) / p3
+
+
+```
+
+
+
+```{r tache3}
+
+
+
+
+
+dem_modele <- lm(percent_dem ~ median_age + percent_white + percent_black +
+               percent_asian + percent_hispanic + per_capita_income + 
+               median_rent + state, data = results)
+tidy(dem_modele, conf.int = TRUE)
+
+dem_coefs <- tidy(dem_modele, conf.int = TRUE) %>%
+  filter(! str_detect(term,"state")) %>%
+  filter(term != "(Intercept)")
+
+dem_coefs
+
+ggplot(dem_coefs,
+aes(x = estimate,
+y = fct_rev(term))) +
+geom_pointrange(aes(xmin = conf.low,
+xmax = conf.high)) +
+geom_vline(xintercept = 0, color = "red")
+
+```
+```{r valeur-predite}
+
+
+
+# Générer les valeurs prédites en faisant varier median_age dans l'état "California"
+my_predictions <- predictions(dem_modele,newdata = datagrid(median_age = seq(0, 60, by = 5),state = "California"))
+
+head(my_predictions)
+
+
+# Tracer le graphique
+ggplot(my_predictions, aes(x = median_age, y = estimate)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),fill ="skyblue") +
+  geom_line(size = 1, color = "blue") +
+  labs(
+    title = "Effet de l’âge médian sur le vote démocrate en Californie",
+    x = "Âge médian",
+    y = "Vote démocrate prédit (%)"
+  ) +
+  theme_minimal()
+
+
+```
+
